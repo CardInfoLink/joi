@@ -494,6 +494,18 @@ var schema = Joi.array().sparse(); // undefined values are now allowed
 schema = schema.sparse(false); // undefined values are now denied
 ```
 
+#### `array.single(enabled)`
+
+Allow single values to be checked against rules as if it were provided as an array.
+
+`enabled` can be used with a falsy value to go back to the default behavior.
+
+```javascript
+var schema = Joi.array().includes(Joi.number()).single();
+schema.validate([4]); // returns `{ error: null, value: [ 4 ] }`
+schema.validate(4); // returns `{ error: null, value: [ 4 ] }`
+```
+
 #### `array.includes(type)`
 
 List the types allowed for the array values where:
@@ -541,7 +553,9 @@ var schema = Joi.array().length(5);
 
 #### `array.unique()`
 
-Requires the array values to be unique. Only works for literals (numbers and strings), all other types are ignored.
+Requires the array values to be unique.
+
+Be aware that a deep equality is performed on elements of the array having a type of `object`, a performance penalty is to be expected for this kind of operation.
 
 ```javascript
 var schema = Joi.array().unique();
@@ -676,6 +690,8 @@ func.validate(function () {}, function (err, value) { });
 ### `number`
 
 Generates a schema object that matches a number data type (as well as strings that can be converted to numbers).
+
+`Infinity` and `-Infinity` are invalid by default, you can change that behavior by calling `allow(Infinity, -Infinity)`.
 
 Supports the same methods of the [`any()`](#any) type.
 

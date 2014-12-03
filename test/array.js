@@ -114,7 +114,7 @@ describe('array', function () {
 
             schema.validate(input, function (err, value) {
 
-                expect(err.message).to.equal('test position 1 fails because foo is required');
+                expect(err.message).to.equal('test at position 1 fails because foo is required');
                 done();
             });
         });
@@ -323,7 +323,7 @@ describe('array', function () {
             schema.validate(input, function (err, value) {
 
                 expect(err).to.exist();
-                expect(err.message).to.equal('arr position 2 fails because 2 must be an integer');
+                expect(err.message).to.equal('arr at position 2 fails because 2 must be an integer');
                 done();
             });
         });
@@ -340,6 +340,20 @@ describe('array', function () {
                 [{ array: [3] }, true],
                 [{ array: ['12345', 3] }, true]
             ], done);
+        });
+
+        it('should not change original value', function (done) {
+
+            var schema = Joi.array().includes(Joi.number()).unique();
+            var input = ['1', '2'];
+
+            schema.validate(input, function (err, value) {
+
+                expect(err).to.not.exist();
+                expect(value).to.deep.equal([1, 2]);
+                expect(input).to.deep.equal(['1', '2']);
+                done();
+            });
         });
 
         describe('#describe', function () {
@@ -383,7 +397,7 @@ describe('array', function () {
                 expect(desc).to.deep.equal({
                     type: 'array',
                     flags: { sparse: false },
-                    includes: [{ type: 'number' }, { type: 'string', invalids: [''] }],
+                    includes: [{ type: 'number', invalids: [Infinity, -Infinity] }, { type: 'string', invalids: [''] }],
                     excludes: [{ type: 'boolean' }]
                 });
 
@@ -394,14 +408,23 @@ describe('array', function () {
 
     describe('#unique', function() {
 
-        it('errors if duplicate numbers or string', function(done) {
-            var schema = Joi.array().unique();
+        it('errors if duplicate numbers, strings, objects, binaries, functions, dates and booleans', function(done) {
+            var buffer = new Buffer('hello world');
+            var func = function() {};
+            var now = new Date();
+            var schema = Joi.array().sparse().unique();
 
             Helper.validate(schema, [
                 [[2, 2], false],
                 [[02, 2], false],
                 [[0x2, 2], false],
-                [['duplicate', 'duplicate'], false]
+                [['duplicate', 'duplicate'], false],
+                [[{ a: 'b' }, { a: 'b' }], false],
+                [[buffer, buffer], false],
+                [[func, func], false],
+                [[now, now], false],
+                [[true, true], false],
+                [[undefined, undefined], false]
             ], done);
         });
 
@@ -413,18 +436,23 @@ describe('array', function () {
             ], done);
         });
 
-        it('ignores duplicates objects, binaries, functions, dates and booleans', function(done) {
+        it('validates without duplicates', function(done) {
             var buffer = new Buffer('hello world');
+            var buffer2 = new Buffer('Hello world');
             var func = function() {};
+            var func2 = function() {};
             var now = new Date();
+            var now2 = new Date(+now + 100);
             var schema = Joi.array().unique();
 
             Helper.validate(schema, [
-                [[{ a: 'b' }, { a: 'b' }], true],
-                [[buffer, buffer], true],
-                [[func, func], true],
-                [[now, now], true],
-                [[true, true], true]
+                [[1, 2], true],
+                [['s1', 's2'], true],
+                [[{ a: 'b' }, { a: 'c' }], true],
+                [[buffer, buffer2], true],
+                [[func, func2], true],
+                [[now, now2], true],
+                [[true, false], true]
             ], done);
         });
     });
@@ -480,6 +508,84 @@ describe('array', function () {
             expect(desc).to.deep.equal({
                 type: 'array',
                 flags: { sparse: false }
+            });
+            done();
+        });
+    });
+
+    describe('#single', function() {
+
+        it('should allow a single element', function(done) {
+
+            var schema = Joi.array().includes(Joi.number()).excludes(Joi.boolean()).single();
+
+            Helper.validate(schema, [
+                [[1, 2, 3], true],
+                [1, true],
+                [['a'], false, null, 'value at position 0 fails because value must be a number'],
+                ['a', false, null, 'single value of value fails because value must be a number'],
+                [true, false, null, 'single value of value contains an excluded value']
+            ], done);
+        });
+
+        it('should allow a single element with multiple types', function(done) {
+
+            var schema = Joi.array().includes(Joi.number(), Joi.string()).single();
+
+            Helper.validate(schema, [
+                [[1, 2, 3], true],
+                [1, true],
+                [[1, 'a'], true],
+                ['a', true],
+                [true, false, null, 'single value of value does not match any of the allowed types']
+            ], done);
+        });
+
+        it('should allow nested arrays', function(done) {
+
+            var schema = Joi.array().includes(Joi.array().includes(Joi.number())).single();
+
+            Helper.validate(schema, [
+                [[[1],[2],[3]], true],
+                [[1, 2, 3], true],
+                [[['a']], false, null, 'value at position 0 fails because value at position 0 fails because value must be a number'],
+                [['a'], false, null, 'value at position 0 fails because value must be an array'],
+                ['a', false, null, 'single value of value fails because value must be an array'],
+                [1, false, null, 'single value of value fails because value must be an array'],
+                [true, false, null, 'single value of value fails because value must be an array']
+            ], done);
+        });
+
+        it('should allow nested arrays with multiple types', function (done) {
+
+            var schema = Joi.array().includes(Joi.array().includes(Joi.number(), Joi.boolean())).single();
+
+            Helper.validate(schema, [
+                [[[1, true]], true],
+                [[1, true], true],
+                [[[1, 'a']], false, null, 'value at position 0 fails because value at position 1 does not match any of the allowed types'],
+                [[1, 'a'], false, null, 'value at position 0 fails because value must be an array']
+            ], done);
+        });
+
+        it('switches the single flag with explicit value', function (done) {
+
+            var schema = Joi.array().single(true);
+            var desc = schema.describe();
+            expect(desc).to.deep.equal({
+                type: 'array',
+                flags: { sparse: false, single: true }
+            });
+            done();
+        });
+
+        it('switches the single flag back', function (done) {
+
+            var schema = Joi.array().single().single(false);
+            var desc = schema.describe();
+            expect(desc).to.deep.equal({
+                type: 'array',
+                flags: { sparse: false, single: false }
             });
             done();
         });
